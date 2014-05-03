@@ -22,18 +22,33 @@ type Synchronizer =MVar[Pair[Point,Decision]]
 
 type Event[T]=Synchronizer=>Abort=>Name=>IO[T]
 
-def atchannel[T](i:In[T],o:Out[T])=for(
-  (ei:Candidate,patt:(T=>Boolean))<- i take;
-  (eo, y:T) <- o take
-) yield {if (patt.apply(y)) for (  (si:Decision) <-newEmptyMVar;
-                                    _<-ei put Some(si);
-                                    ki <-si take;
-                                    (so:Decision)<-newEmptyMVar;
-                                    _ <- eo put(Some(so));
-                                    ko <- newEmptyMVar;
+def maybe[A,B](b: => B)(f:A=>B)(opt:Option[A]):B={
+  opt.map(f).getOrElse(b)
+}
 
-                            )
-        }
+def atchannel[T](i:In[T],o:Out[T]):IO[Unit]=for {
+  (ei: Candidate, patt: (T => Boolean)) <- i take;
+  (eo:Candidate, y: T) <- o take;
+} yield {if (patt.apply(y)) for {  si:Decision <-newEmptyMVar[Option[Commit]]
+                                     _ <-ei.put(Some(si))
+                                    ki:Option[Commit] <-si take;
+                                    (so:Decision) <-newEmptyMVar[Option[Commit]]
+                                     _ <- eo put(Some(so))
+                                    ko:Option[Commit] <- so take}
+                                yield {
+                                maybe(ioUnit)((ci: Commit) => for {_ <- ci.put(ko isDefined)} yield {})(ki)
+                                maybe(ioUnit)((ci: Commit) => for {_ <- ci.put(ko isDefined)} yield {})(ki)
+                                 }
+  else  for { _ <-ei put None
+              _ <- eo put None
+
+                      }
+           yield{atchannel(i,o)}
+
+  }
+
+
+
 
 
 
