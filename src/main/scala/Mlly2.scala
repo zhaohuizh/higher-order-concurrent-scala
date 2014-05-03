@@ -50,6 +50,15 @@ object Mlly{
     }
 
 
+  def atpoint[T](sync:Synchronizer, p:Point, i: In, io: IO[T]):IO[T] = 
+    for(
+      (e:Decision) <-newEmptyMVar[Option[Commit]];
+      _ <- i.put(e);
+      s:Option <- e take;
+      _ <- r.put(p s);
+      _ <- p take
+
+    )yield {io}
 
 
 }
