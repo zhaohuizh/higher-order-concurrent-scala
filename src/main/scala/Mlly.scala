@@ -26,7 +26,8 @@ object Mlly{
 
   type Event[T] = Synchronizer => Abort => Name => IO[T]
   type Channel[T]=(In,Out,MVar[T])
-  def fix[A,B](f: (A=>A)): A = {lazy val x= f (x)
+
+  def fix[A,B](f: (A=>A)): A = {lazy val x:A = (f (x))
                                  x}
 
   def maybe[A, B](b: => B)(f: A => B)(opt: Option[A]): B = {
@@ -70,7 +71,31 @@ object Mlly{
 
   )yield{(i,o,m)}
 
+  def atsync(r:Synchronizer)(a:Abort)(x:IO[Unit])=
+    for(
+      pair<-r take;
+      _ <-forkIO (fix ((z:IO[Unit])=>for( pair2<-r take;
+                                          _ <-forkIO(z);
+                                         _<-pair2._2 put(None))
+                                       yield{{}}));
+      c <- newEmptyMVar[Boolean];
+      _ <-pair._2 put(Some(c));
+      b <- c take)
+     // _<- if (b) for( _ <- pair._1 put {};
+                //      _ <-fix( ((z:IO[Unit])=>for( pair3<-a take;
+                    //                           _ <-forkIO(z);
+                  //                             _<-if (pair3._1.contains(pair._1)) ioUnit
+                      //                             else pair3._2
+                        //                            ) yield{{}}))
+
+                     //) yield{{}}
+          //else x)
+      yield{{}}
+
 }
+
+
+
 
 
 
