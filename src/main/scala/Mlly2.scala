@@ -90,4 +90,10 @@ object Mlly2{
         y <- f (x)
       )yield{y}
 
+  def guard[T](vs:IO[Event[T]]):Event[T] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        v <- vs;
+        x <- v (s) (a) (n)
+      )yield{x}
 }
