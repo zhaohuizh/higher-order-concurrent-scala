@@ -11,7 +11,7 @@ import concurrent._
 import scalaz.OptionT
 import scalaz.ListT
 
-object Mlly{
+object Mlly2{
   type Commit = MVar[Boolean]
   type Decision = MVar[Option[Commit]]
   type Candidate = MVar[Decision]
@@ -23,7 +23,8 @@ object Mlly{
   type Synchronizer = MVar[Pair[Point, Decision]]
 
   type Event[T] = Synchronizer => Abort => Name => IO[T]
-  //type Channel[T]=(In,Out,MVar[T])
+  type Channel[T]=(In,Out,MVar[T])
+
   def maybe[A, B](b: => B)(f: A => B)(opt: Option[A]): B = {
     opt.map(f).getOrElse(b)
   }
@@ -50,20 +51,49 @@ object Mlly{
     }
 
 
-  def atpoint[T](sync:Synchronizer, p:Point, i: In, io: IO[T]):IO[T] = 
+  def atpoint[T](sync:Synchronizer, p:Point, i: In, io: IO[T]): IO[T] = 
     for(
-      (e:Decision) <-newEmptyMVar[Option[Commit]];
+      e <- newEmptyMVar[Decision];
       _ <- i.put(e);
-      s:Option <- e take;
-      _ <- r.put(p s);
-      _ <- p take
+      s <- e take;
+      _ <- sync.put(Pair(p, s));
+      _ <- p take;
+      x <- io
+    ) yield {x}
 
-    )yield {io}
 
 
+
+  def receive[T](in:In, out:Out, m:MVar[T]): Event[T] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        t <- newEmptyMVar[Unit];
+        _ <- forkIO(n.put(t));
+        _ <- atpoint(s, t, in, (m take));
+        x <- m take
+      ) yield{x}
+
+
+  def transmit[T](in:In, out:Out, m:MVar[T]) (b:T): Event[Unit] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        t <- newEmptyMVar[Unit];
+        _ <- forkIO(n.put(t));
+        _ <- atpoint(s, t, out, (m.put(b)))
+      ) yield{}
+  
+
+  def wrap[T, K](event:Event[T])(f: T => IO[K]): Event[K] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        x <- event (s) (a) (n);
+        y <- f (x)
+      )yield{y}
+
+  def guard[T](vs:IO[Event[T]]):Event[T] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        v <- vs;
+        x <- v (s) (a) (n)
+      )yield{x}
 }
-
-
-
-
-
