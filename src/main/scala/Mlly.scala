@@ -6,6 +6,8 @@ import scalaz.concurrent.MVar
 import scalaz.concurrent.MVar._
 import scalaz.concurrent.Strategy
 import scalaz.effect._
+import scalaz.Free
+import scalaz.Free._
 import IO._
 import concurrent._
 import scalaz.OptionT
@@ -23,25 +25,29 @@ object Mlly{
   type Synchronizer = MVar[Pair[Point, Decision]]
 
   type Event[T] = Synchronizer => Abort => Name => IO[T]
-  //type Channel[T]=(In,Out,MVar[T])
+  type Channel[T]=(In,Out,MVar[T])
+  def fix[A,B](f: (A=>A)): A = {lazy val x= f (x)
+                                 x}
+
   def maybe[A, B](b: => B)(f: A => B)(opt: Option[A]): B = {
     opt.map(f).getOrElse(b)
   }
 
   def forkIO(f: => IO[Unit])(implicit s: Strategy): IO[Unit] =
-    IO { s(f.unsafePerformIO); () }
+    IO { (s(f.unsafePerformIO)); () }
 
   def atchannel(i: In, o: Out): IO[Unit] =
     for(
       ei <- i.take;
       eo <- o.take;
       si <- newEmptyMVar[Option[Commit]];
-      yy <- ei.put(si);
-      ki <- si take;
-      so <- newEmptyMVar[Option[Commit]];
-      xx <- eo.put(so);
-      ko <- so take
-     // _ <- maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {()})(ki)
+      yy <- ei.put(si)
+
+     // ki <- si take;
+      //so <- newEmptyMVar[Option[Commit]];
+      //xx <- eo.put(so);
+      //ko <- so take
+      // _ <- maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {()})(ki)
 
     ) yield {
 
@@ -49,8 +55,20 @@ object Mlly{
       //maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki)
     }
 
+  def spawn (f: => IO[Unit])= forkIO (f)
+
+  def new_channel[T]():IO[Channel[T]]=for(
+      i<- newEmptyMVar[Candidate];
+      o <-newEmptyMVar[Candidate];
+      _ <-forkIO (fix ((z:IO[Unit])=>for(_ <-atchannel(i,o);
+                                          x <-z
+                                         ) yield {x}));
+      m <-newEmptyMVar[T]
 
 
+
+
+  )yield{(i,o,m)}
 
 }
 
