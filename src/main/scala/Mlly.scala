@@ -92,6 +92,52 @@ object Mlly{
           //else x)
       yield{{}}
 
+  def atpoint[T](sync:Synchronizer, p:Point, i: In, io: IO[T]): IO[T] =
+    for(
+      e <- newEmptyMVar[Decision];
+      _ <- i.put(e);
+      s <- e take;
+      _ <- sync.put(Pair(p, s));
+      _ <- p take;
+      x <- io
+    ) yield {x}
+
+
+
+
+  def receive[T](in:In, out:Out, m:MVar[T]): Event[T] =
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        t <- newEmptyMVar[Unit];
+        _ <- forkIO(n.put(t));
+        _ <- atpoint(s, t, in, (m take));
+        x <- m take
+      ) yield{x}
+
+
+  def transmit[T](in:In, out:Out, m:MVar[T]) (b:T): Event[Unit] =
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        t <- newEmptyMVar[Unit];
+        _ <- forkIO(n.put(t));
+        _ <- atpoint(s, t, out, (m.put(b)))
+      ) yield{}
+
+
+  def wrap[T, K](event:Event[T])(f: T => IO[K]): Event[K] =
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        x <- event (s) (a) (n);
+        y <- f (x)
+      )yield{y}
+
+  def guard[T](vs:IO[Event[T]]):Event[T] =
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        v <- vs;
+        x <- v (s) (a) (n)
+      )yield{x}
+
 }
 
 
