@@ -81,5 +81,13 @@ object Mlly2{
         _ <- forkIO(n.put(t));
         _ <- atpoint(s, t, out, (m.put(b)))
       ) yield{}
- 
+  
+
+  def wrap[T, K](event:Event[T])(f: T => IO[K]): Event[K] = 
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        x <- event (s) (a) (n);
+        y <- f (x)
+      )yield{y}
+
 }
