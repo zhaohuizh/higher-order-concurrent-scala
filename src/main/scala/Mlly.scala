@@ -2,16 +2,16 @@
  * Created by existentialtype on 5/2/14.
  */
 
+import scala.collection.immutable
 import scalaz.concurrent.MVar
 import scalaz.concurrent.MVar._
 import scalaz.concurrent.Strategy
 import scalaz.effect._
-import scalaz.Free
+import scalaz.Foldable._
+import scalaz.{Foldable, Free, OptionT, ListT}
 import scalaz.Free._
 import IO._
 import concurrent._
-import scalaz.OptionT
-import scalaz.ListT
 
 object Mlly{
   type Commit = MVar[Boolean]
@@ -20,7 +20,7 @@ object Mlly{
   type In = MVar[Candidate]
   type Out= MVar[Candidate]
   type Point = MVar[Unit]
-  type Name = MVar[Point]
+  type Name = MVar[List[Point]]
   type Abort = MVar[Pair[List[Point], IO[Unit]]]
   type Synchronizer = MVar[Pair[Point, Decision]]
 
@@ -71,6 +71,12 @@ object Mlly{
 
   )yield{(i,o,m)}
 
+  def atsync_help(r:Synchronizer)(a:Abort)(pair:Pair[Point,Decision]):IO[Unit]=
+    fix( ((z:IO[Unit])=>for( pair3<-a take;
+                                      _ <-forkIO(z);
+                                      _<-if (pair3._1.contains(pair._1)) ioUnit
+                                      else pair3._2) yield{}))
+
   def atsync(r:Synchronizer)(a:Abort)(x:IO[Unit])=
     for(
       pair<-r take;
@@ -80,17 +86,18 @@ object Mlly{
                                        yield{{}}));
       c <- newEmptyMVar[Boolean];
       _ <-pair._2 put(Some(c));
-      b <- c take)
-     // _<- if (b) for( _ <- pair._1 put {};
-                //      _ <-fix( ((z:IO[Unit])=>for( pair3<-a take;
-                    //                           _ <-forkIO(z);
-                  //                             _<-if (pair3._1.contains(pair._1)) ioUnit
-                      //                             else pair3._2
-                        //                            ) yield{{}}))
+      b <- c take;
+      _ <- if (b) {for( _ <- pair._1 put {};
+                _ <-atsync_help(r)(a)(pair)
 
-                     //) yield{{}}
-          //else x)
-      yield{{}}
+              ) yield{}}
+           else   {x}
+
+    )
+      yield {}
+
+      //) yield{{}}
+
 
   def atpoint[T](sync:Synchronizer, p:Point, i: In, io: IO[T]): IO[T] =
     for(
@@ -109,7 +116,7 @@ object Mlly{
     (s:Synchronizer) => (a:Abort) => (n:Name) =>
       for(
         t <- newEmptyMVar[Unit];
-        _ <- forkIO(n.put(t));
+        _ <- forkIO(n.put (immutable.List(t)));
         _ <- atpoint(s, t, in, (m take));
         x <- m take
       ) yield{x}
@@ -119,7 +126,7 @@ object Mlly{
     (s:Synchronizer) => (a:Abort) => (n:Name) =>
       for(
         t <- newEmptyMVar[Unit];
-        _ <- forkIO(n.put(t));
+        _ <- forkIO(n.put(immutable.List(t)));
         _ <- atpoint(s, t, out, (m.put(b)))
       ) yield{}
 
@@ -138,7 +145,35 @@ object Mlly{
         x <- v (s) (a) (n)
       )yield{x}
 
-}
+
+
+
+  def choose[T](vl:List[Event[T]]): Event[T]={
+    (r:Synchronizer)=>(a:Abort)=>(n:Name)=>
+    {for(  j<-newEmptyMVar[T];
+            tl:List[Point] <-Foldable[List].foldLeftM[IO,Event[T],List[Point]](vl,List[Point]())
+                ((tl_in:List[Point],v:Event[T])=>
+                    {for( n_new<-newEmptyMVar[List[Point]];
+                              _<-forkIO(for(x<- v (r) (a) (n_new);
+                                      _ <-j.put(x)
+                                     ) yield{});
+                              tl_new <- n_new.take;
+                                  _  <-n_new.put(tl_new)
+                          )
+                              yield{tl_new ++ tl_in}});
+           _<-forkIO(n.put(tl));
+           tk<-j.take  )
+      yield{tk}}
+  }
+
+
+
+
+
+
+
+
+
 
 
 
