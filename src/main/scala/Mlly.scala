@@ -50,18 +50,18 @@ object Mlly {
       ei <- i.take;
       eo <- o.take;
       si <- newEmptyMVar[Option[Commit]];
-      yy <- ei.put(si)
+      yy <- ei.put(si);
 
-    // ki <- si take;
-    //so <- newEmptyMVar[Option[Commit]];
-    //xx <- eo.put(so);
-    //ko <- so take
-    // _ <- maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {()})(ki)
+     ki <- si take;
+    so <- newEmptyMVar[Option[Commit]];
+    xx <- eo.put(so);
+    ko <- so take;
+     _ <- maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {()})(ki)
 
     ) yield {
 
-      // maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki);
-      //maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki)
+       maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki);
+       maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki)
     }
 
   def spawn(f: => IO[Unit]) = forkIO(f)
@@ -212,20 +212,11 @@ object Mlly {
 
     ))
 
-}
 
- /* def sync[T](v:Event[T]):IO[T]={
+
+  def sync[T](v:Event[T]):IO[T]={
     for(j<-newEmptyMVar[T];
-        _<-forkIO(fix((z:IO[Unit])=> for(
-                                                  r<-newEmptyMVar[Pair[Point,Decision]];
-                                                  a<-newEmptyMVar[Pair[List[Point], IO[Unit]]];
-                                                  n<-newEmptyMVar[List[Point]];
-                                                  _ <-forkIO(atsync(r)(a)(z));
-                                                  x<- v (r) (a) (n);
-                                                  _ <- j.put(x)
-                                                  ) yield{}
-
-              ));
+        _<-sync_helper(v)(j);
         tk<-j.take
     ) yield {tk}
   }
@@ -233,7 +224,6 @@ object Mlly {
 
 
 
-*/
 
 
 
