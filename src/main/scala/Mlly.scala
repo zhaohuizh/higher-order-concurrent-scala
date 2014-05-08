@@ -30,7 +30,7 @@ object Mlly {
   type Event[T] = Synchronizer => Abort => Name => IO[T]
   type Channel[T] = (In, Out, MVar[T])
 
-  def fix[A, B](f: (A => A)): A = {
+  def fix[A](f: (A => A)): A = {
     lazy val x: A = (f(x))
     x
   }
@@ -85,17 +85,15 @@ object Mlly {
     fix(((z: IO[Unit]) => for (pair3 <- a take;
                                _ <- forkIO(z);
                                _ <- if (pair3._1.contains(pair._1)) ioUnit
-                               else pair3._2) yield {}))
+                               else pair3._2) yield ()))
 
-  def atsync(r: Synchronizer)(a: Abort)(x: IO[Unit]) =
+  def atsync(r: Synchronizer)(a: Abort)(x: IO[Unit]):IO[Unit] =
     for (
       pair <- r take;
       _ <- forkIO(fix((z: IO[Unit]) => for (pair2 <- r take;
                                             _ <- forkIO(z);
                                             _ <- pair2._2 put (None))
-      yield {
-        {}
-      }));
+      yield ()));
       c <- newEmptyMVar[Boolean];
       _ <- pair._2 put (Some(c));
       b <- c take;
@@ -110,7 +108,7 @@ object Mlly {
       }
 
     )
-    yield {}
+    yield ()
 
   //) yield{{}}
 
@@ -167,18 +165,7 @@ object Mlly {
         x
       }
 
-  /* def choose_helper[T](vl: List[Event[T]])(j: MVar[T])(r: Synchronizer)(a: Abort)(n: Name): IO[List[Point]] = {
-    Foldable[List].foldLeftM[IO, Event[T], List[Point]](vl, List[Point]())((tl_in: List[Point], v: Event[T]) =>
-      for (n_new <- newEmptyMVar[List[Point]];
-           _ <- forkIO(for (x <- v(r)(a)(n_new);
-                            _ <- j.put(x)
-           ) yield {});
-           tl_new <- n_new.take;
-           _ <- n_new.put(tl_new)) yield {
-        tl_new ++ tl_in
-      })
 
-  }*/
   def choose_helper[T](vl: List[Event[T]])(j: MVar[T])(r: Synchronizer)(a: Abort)(n: Name): IO[List[Point]] = {
     vl.foldLeftM[IO, List[Point]](List[Point]())((tl_in: List[Point], v: Event[T]) =>
       for (n_new <- newEmptyMVar[List[Point]];
@@ -213,11 +200,40 @@ object Mlly {
     }
   }
 
+ def sync_helper[T](v: Event[T])(j: MVar[T]): IO[Unit] =
+   forkIO(fix((z: IO[Unit]) => for (
+      r <- newEmptyMVar[Pair[Point, Decision]];
+      a <- newEmptyMVar[Pair[List[Point], IO[Unit]]];
+      n <- newEmptyMVar[List[Point]];
+      _<-forkIO(atsync(r)(a)(z));
+      x <- v(r)(a)(n);
+      jk <- j.put(x)
+    ) yield (jk)
+
+    ))
+
+}
+
+ /* def sync[T](v:Event[T]):IO[T]={
+    for(j<-newEmptyMVar[T];
+        _<-forkIO(fix((z:IO[Unit])=> for(
+                                                  r<-newEmptyMVar[Pair[Point,Decision]];
+                                                  a<-newEmptyMVar[Pair[List[Point], IO[Unit]]];
+                                                  n<-newEmptyMVar[List[Point]];
+                                                  _ <-forkIO(atsync(r)(a)(z));
+                                                  x<- v (r) (a) (n);
+                                                  _ <- j.put(x)
+                                                  ) yield{}
+
+              ));
+        tk<-j.take
+    ) yield {tk}
+  }
 }
 
 
 
-
+*/
 
 
 
