@@ -64,23 +64,6 @@ object Mlly {
        maybe(ioUnit)((ci: Commit) => for (_ <- ci.put(ko isDefined)) yield {})(ki)
     }
 
-  def spawn(f: => IO[Unit]) = forkIO(f)
-
-  def new_channel[T](): IO[Channel[T]] = for (
-    i <- newEmptyMVar[Candidate];
-    o <- newEmptyMVar[Candidate];
-    _ <- forkIO(fix((z: IO[Unit]) => for (_ <- atchannel(i, o);
-                                          x <- z
-    ) yield {
-      x
-    }));
-    m <- newEmptyMVar[T]
-
-
-  ) yield {
-    (i, o, m)
-  }
-
   def atsync_help(r: Synchronizer)(a: Abort)(pair: Pair[Point, Decision]): IO[Unit] =
     fix(((z: IO[Unit]) => for (pair3 <- a take;
                                _ <- forkIO(z);
@@ -110,9 +93,6 @@ object Mlly {
     )
     yield ()
 
-  //) yield{{}}
-
-
   def atpoint[T](sync: Synchronizer, p: Point, i: In, io: IO[T]): IO[T] =
     for (
       e <- newEmptyMVar[Decision];
@@ -124,6 +104,30 @@ object Mlly {
     ) yield {
       x
     }
+
+  def spawn(f: => IO[Unit]) = forkIO(f)
+
+  def new_channel[T](): IO[Channel[T]] = for (
+    i <- newEmptyMVar[Candidate];
+    o <- newEmptyMVar[Candidate];
+    _ <- forkIO(fix((z: IO[Unit]) => for (_ <- atchannel(i, o);
+                                          x <- z
+    ) yield {
+      x
+    }));
+    m <- newEmptyMVar[T]
+
+
+  ) yield {
+    (i, o, m)
+  }
+
+
+
+  //) yield{{}}
+
+
+
 
 
   def receive[T](in: In, out: Out, m: MVar[T]): Event[T] =
@@ -155,16 +159,6 @@ object Mlly {
       ) yield {
         y
       }
-
-  def guard[T](vs: IO[Event[T]]): Event[T] =
-    (s: Synchronizer) => (a: Abort) => (n: Name) =>
-      for (
-        v <- vs;
-        x <- v(s)(a)(n)
-      ) yield {
-        x
-      }
-
 
   def choose_helper[T](vl: List[Event[T]])(j: MVar[T])(r: Synchronizer)(a: Abort)(n: Name): IO[List[Point]] = {
     vl.foldLeftM[IO, List[Point]](List[Point]())((tl_in: List[Point], v: Event[T]) =>
@@ -200,7 +194,31 @@ object Mlly {
     }
   }
 
- def sync_helper[T](v: Event[T])(j: MVar[T]): IO[Unit] =
+  def guard[T](vs: IO[Event[T]]): Event[T] =
+    (s: Synchronizer) => (a: Abort) => (n: Name) =>
+      for (
+        v <- vs;
+        x <- v(s)(a)(n)
+      ) yield {
+        x
+      }
+
+
+  def wrapabort[T](vs:IO[Unit], event:Event[T]):Event[T] =
+    (s:Synchronizer) => (a:Abort) => (n:Name) =>
+      for(
+        _ <- forkIO(
+          for(
+            tL <- n.take;
+            _ <- n.put(tL);
+            _ <- a.put(Pair(tL, vs))
+          )yield{}
+        );
+        x <- event (s) (a) (n)
+      )yield{x}
+
+
+  def sync_helper[T](v: Event[T])(j: MVar[T]): IO[Unit] =
    forkIO(fix((z: IO[Unit]) => for (
       r <- newEmptyMVar[Pair[Point, Decision]];
       a <- newEmptyMVar[Pair[List[Point], IO[Unit]]];
